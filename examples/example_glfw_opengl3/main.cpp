@@ -170,6 +170,12 @@ int main(int, char**)
         if (show_demo_window)
             ImGui::ShowDemoWindow(&show_demo_window);
 
+        //GH-3775: A dummy window for testing, the others are down below
+        ImGui::SetNextWindowDockID(3775);
+        ImGui::Begin("Tab0");
+        ImGui::Text("Hello, Tab0!");
+        ImGui::End();
+
         // 2. Show a simple window that we create ourselves. We use a Begin/End pair to created a named window.
         {
             static float f = 0.0f;
@@ -190,8 +196,36 @@ int main(int, char**)
             ImGui::Text("counter = %d", counter);
 
             ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+
+            //GH-3775: Add buttons for selecting the various tabs:
+            if (ImGui::Button("Tab0"))
+            {
+                ImGui::SetWindowFocus("Tab0");
+            }
+
+            if (ImGui::Button("Tab1"))
+            {
+                ImGui::SetWindowFocus("Tab1");
+            }
+
+            if (ImGui::Button("Tab2"))
+            {
+                ImGui::SetWindowFocus("Tab2");
+            }
+
             ImGui::End();
         }
+
+        //GH-3775: Show some dummy windows for tabs (There's also one above to make sure the order of window submission doesn't matter.)
+        ImGui::SetNextWindowDockID(3775);
+        ImGui::Begin("Tab1");
+        ImGui::Text("Hello, Tab1!");
+        ImGui::End();
+
+        ImGui::SetNextWindowDockID(3775);
+        ImGui::Begin("Tab2");
+        ImGui::Text("Hello, Tab2!");
+        ImGui::End();
 
         // 3. Show another simple window.
         if (show_another_window)
