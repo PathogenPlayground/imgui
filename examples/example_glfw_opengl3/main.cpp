@@ -170,8 +170,11 @@ int main(int, char**)
         if (show_demo_window)
             ImGui::ShowDemoWindow(&show_demo_window);
 
+        //GH-3775: Make dockspace over the viewport
+        ImGuiID dock_id = ImGui::DockSpaceOverViewport();
+
         //GH-3775: A dummy window for testing, the others are down below
-        ImGui::SetNextWindowDockID(3775);
+        ImGui::SetNextWindowDockID(dock_id);
         ImGui::Begin("Tab0");
         ImGui::Text("Hello, Tab0!");
         ImGui::End();
@@ -217,12 +220,12 @@ int main(int, char**)
         }
 
         //GH-3775: Show some dummy windows for tabs (There's also one above to make sure the order of window submission doesn't matter.)
-        ImGui::SetNextWindowDockID(3775);
+        ImGui::SetNextWindowDockID(dock_id);
         ImGui::Begin("Tab1");
         ImGui::Text("Hello, Tab1!");
         ImGui::End();
 
-        ImGui::SetNextWindowDockID(3775);
+        ImGui::SetNextWindowDockID(dock_id);
         ImGui::Begin("Tab2");
         ImGui::Text("Hello, Tab2!");
         ImGui::End();
