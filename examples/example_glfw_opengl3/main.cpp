@@ -170,8 +170,15 @@ int main(int, char**)
         if (show_demo_window)
             ImGui::ShowDemoWindow(&show_demo_window);
 
-        //GH-3775: Make dockspace over the viewport
+        //GH-3775: Make a dockspace to hold the tabs
+#if 1
         ImGuiID dock_id = ImGui::DockSpaceOverViewport();
+#else
+        ImGuiID dock_id = 3775;
+        ImGui::Begin("Dock Window");
+        ImGui::DockSpace(dock_id);
+        ImGui::End();
+#endif
 
         //GH-3775: A dummy window for testing, the others are down below
         ImGui::SetNextWindowDockID(dock_id);
