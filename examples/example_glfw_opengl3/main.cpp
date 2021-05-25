@@ -199,6 +199,20 @@ int main(int, char**)
             ImGui::End();
         }
 
+        ImGui::Begin("GH-4135 Shader Swap Demo");
+        ImVec2 textureSize = ImVec2((float)io.Fonts->TexWidth, (float)io.Fonts->TexHeight);
+
+        ImGui::Text("Before changing the shader...");
+
+        ImGui::GetWindowDrawList()->AddCallback(ImGui_ImplOpenGL3_SetRedOnlyShader, nullptr);
+        ImGui::Text("Now the shader is red-only!");
+        ImGui::Image(io.Fonts->TexID, textureSize);
+        ImGui::GetWindowDrawList()->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+
+        ImGui::Text("All back to normal!");
+        ImGui::Image(io.Fonts->TexID, textureSize);
+        ImGui::End();
+
         // Rendering
         ImGui::Render();
         int display_w, display_h;

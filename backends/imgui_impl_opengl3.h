@@ -36,6 +36,8 @@ IMGUI_IMPL_API void     ImGui_ImplOpenGL3_DestroyFontsTexture();
 IMGUI_IMPL_API bool     ImGui_ImplOpenGL3_CreateDeviceObjects();
 IMGUI_IMPL_API void     ImGui_ImplOpenGL3_DestroyDeviceObjects();
 
+IMGUI_IMPL_API void ImGui_ImplOpenGL3_SetRedOnlyShader(const ImDrawList*, const ImDrawCmd*);
+
 // Specific OpenGL ES versions
 //#define IMGUI_IMPL_OPENGL_ES2     // Auto-detected on Emscripten
 //#define IMGUI_IMPL_OPENGL_ES3     // Auto-detected on iOS/Android

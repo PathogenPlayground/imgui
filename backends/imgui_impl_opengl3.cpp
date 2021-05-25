@@ -160,6 +160,10 @@ static GLuint       g_AttribLocationVtxPos = 0, g_AttribLocationVtxUV = 0, g_Att
 static unsigned int g_VboHandle = 0, g_ElementsHandle = 0;
 static bool         g_HasClipOrigin = false;
 
+static GLuint g_RedOnlyShaderHandle = 0;
+static GLuint g_RedOnlyFragHandle = 0;
+static float g_CurrentProjectionMatrix[4][4];
+
 // Functions
 bool    ImGui_ImplOpenGL3_Init(const char* glsl_version)
 {
@@ -311,6 +315,11 @@ static void ImGui_ImplOpenGL3_SetupRenderState(ImDrawData* draw_data, int fb_wid
         { 0.0f,         0.0f,        -1.0f,   0.0f },
         { (R+L)/(L-R),  (T+B)/(B-T),  0.0f,   1.0f },
     };
+
+    // We need to rebind uniforms when the shader changes, so we save a copy of the projection transform
+    static_assert(sizeof(ortho_projection) == sizeof(g_CurrentProjectionMatrix), "Projection transform sizes must match");
+    memcpy(g_CurrentProjectionMatrix, ortho_projection, sizeof(ortho_projection));
+
     glUseProgram(g_ShaderHandle);
     glUniform1i(g_AttribLocationTex, 0);
     glUniformMatrix4fv(g_AttribLocationProjMtx, 1, GL_FALSE, &ortho_projection[0][0]);
@@ -334,6 +343,13 @@ static void ImGui_ImplOpenGL3_SetupRenderState(ImDrawData* draw_data, int fb_wid
     glVertexAttribPointer(g_AttribLocationVtxPos,   2, GL_FLOAT,         GL_FALSE, sizeof(ImDrawVert), (GLvoid*)IM_OFFSETOF(ImDrawVert, pos));
     glVertexAttribPointer(g_AttribLocationVtxUV,    2, GL_FLOAT,         GL_FALSE, sizeof(ImDrawVert), (GLvoid*)IM_OFFSETOF(ImDrawVert, uv));
     glVertexAttribPointer(g_AttribLocationVtxColor, 4, GL_UNSIGNED_BYTE, GL_TRUE,  sizeof(ImDrawVert), (GLvoid*)IM_OFFSETOF(ImDrawVert, col));
+}
+
+void ImGui_ImplOpenGL3_SetRedOnlyShader(const ImDrawList*, const ImDrawCmd*)
+{
+    glUseProgram(g_RedOnlyShaderHandle);
+    glUniform1i(g_AttribLocationTex, 0);
+    glUniformMatrix4fv(g_AttribLocationProjMtx, 1, GL_FALSE, &g_CurrentProjectionMatrix[0][0]);
 }
 
 // OpenGL3 Render function.
@@ -645,6 +661,17 @@ bool    ImGui_ImplOpenGL3_CreateDeviceObjects()
         "    Out_Color = Frag_Color * texture(Texture, Frag_UV.st);\n"
         "}\n";
 
+    const GLchar* fragment_shader_glsl_130_red_only =
+        "uniform sampler2D Texture;\n"
+        "in vec2 Frag_UV;\n"
+        "in vec4 Frag_Color;\n"
+        "out vec4 Out_Color;\n"
+        "void main()\n"
+        "{\n"
+        "    Out_Color = Frag_Color * texture(Texture, Frag_UV.st);\n"
+        "    Out_Color.gb = vec2(0, 0);\n"
+        "}\n";
+
     const GLchar* fragment_shader_glsl_300_es =
         "precision mediump float;\n"
         "uniform sampler2D Texture;\n"
@@ -669,6 +696,7 @@ bool    ImGui_ImplOpenGL3_CreateDeviceObjects()
     // Select shaders matching our GLSL versions
     const GLchar* vertex_shader = NULL;
     const GLchar* fragment_shader = NULL;
+    assert(glsl_version == 130); // Backend only updated for the example, which defaults to 130 on desktop OpenGL.
     if (glsl_version < 130)
     {
         vertex_shader = vertex_shader_glsl_120;
@@ -703,6 +731,18 @@ bool    ImGui_ImplOpenGL3_CreateDeviceObjects()
     glCompileShader(g_FragHandle);
     CheckShader(g_FragHandle, "fragment shader");
 
+    const GLchar* red_only_fragment_shader_with_version[2] = { g_GlslVersionString, fragment_shader_glsl_130_red_only };
+    g_RedOnlyFragHandle = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(g_RedOnlyFragHandle, 2, red_only_fragment_shader_with_version, NULL);
+    glCompileShader(g_RedOnlyFragHandle);
+    CheckShader(g_RedOnlyFragHandle, "red-only fragment shader");
+
+    g_RedOnlyShaderHandle = glCreateProgram();
+    glAttachShader(g_RedOnlyShaderHandle, g_VertHandle);
+    glAttachShader(g_RedOnlyShaderHandle, g_RedOnlyFragHandle);
+    glLinkProgram(g_RedOnlyShaderHandle);
+    CheckProgram(g_RedOnlyShaderHandle, "red-only shader program");
+
     g_ShaderHandle = glCreateProgram();
     glAttachShader(g_ShaderHandle, g_VertHandle);
     glAttachShader(g_ShaderHandle, g_FragHandle);
@@ -714,6 +754,13 @@ bool    ImGui_ImplOpenGL3_CreateDeviceObjects()
     g_AttribLocationVtxPos = (GLuint)glGetAttribLocation(g_ShaderHandle, "Position");
     g_AttribLocationVtxUV = (GLuint)glGetAttribLocation(g_ShaderHandle, "UV");
     g_AttribLocationVtxColor = (GLuint)glGetAttribLocation(g_ShaderHandle, "Color");
+
+    // Assert the shaders have compatible signatures
+    assert(g_AttribLocationTex == glGetUniformLocation(g_RedOnlyShaderHandle, "Texture"));
+    assert(g_AttribLocationProjMtx == glGetUniformLocation(g_RedOnlyShaderHandle, "ProjMtx"));
+    assert(g_AttribLocationVtxPos == (GLuint)glGetAttribLocation(g_RedOnlyShaderHandle, "Position"));
+    assert(g_AttribLocationVtxUV == (GLuint)glGetAttribLocation(g_RedOnlyShaderHandle, "UV"));
+    assert(g_AttribLocationVtxColor == (GLuint)glGetAttribLocation(g_RedOnlyShaderHandle, "Color"));
 
     // Create buffers
     glGenBuffers(1, &g_VboHandle);
@@ -737,9 +784,12 @@ void    ImGui_ImplOpenGL3_DestroyDeviceObjects()
     if (g_ElementsHandle)   { glDeleteBuffers(1, &g_ElementsHandle); g_ElementsHandle = 0; }
     if (g_ShaderHandle && g_VertHandle) { glDetachShader(g_ShaderHandle, g_VertHandle); }
     if (g_ShaderHandle && g_FragHandle) { glDetachShader(g_ShaderHandle, g_FragHandle); }
+    if (g_RedOnlyShaderHandle && g_RedOnlyFragHandle) { glDetachShader(g_ShaderHandle, g_FragHandle); }
     if (g_VertHandle)       { glDeleteShader(g_VertHandle); g_VertHandle = 0; }
     if (g_FragHandle)       { glDeleteShader(g_FragHandle); g_FragHandle = 0; }
+    if (g_FragHandle)       { glDeleteShader(g_RedOnlyFragHandle); g_RedOnlyFragHandle = 0; }
     if (g_ShaderHandle)     { glDeleteProgram(g_ShaderHandle); g_ShaderHandle = 0; }
+    if (g_RedOnlyShaderHandle) { glDeleteProgram(g_RedOnlyShaderHandle); g_RedOnlyShaderHandle = 0; }
 
     ImGui_ImplOpenGL3_DestroyFontsTexture();
 }
