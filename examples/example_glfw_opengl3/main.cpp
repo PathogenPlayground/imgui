@@ -51,6 +51,108 @@ static void glfw_error_callback(int error, const char* description)
     fprintf(stderr, "Glfw Error %d: %s\n", error, description);
 }
 
+static bool CheckShader(GLuint handle, const char* desc);
+static bool CheckProgram(GLuint handle, const char* desc);
+
+static GLuint g_VertexShader;
+static GLuint g_FragmentShader;
+static GLuint g_ShaderProgram;
+
+static void GH4174_Init()
+{
+    g_VertexShader = glCreateShader(GL_VERTEX_SHADER);
+    const GLchar* vertexShaderCode =
+        "#version 330 core\n"
+        "precision mediump float;\n"
+        "layout (location = 0) in vec2 Position;\n"
+        "layout (location = 1) in vec2 UV;\n"
+        "layout (location = 2) in vec4 Color;\n"
+        "\n"
+        "uniform mat4 ProjMtx;\n"
+        "out vec2 Frag_UV;\n"
+        "out vec4 Frag_Color;\n"
+        "\n"
+        "void main()\n"
+        "{\n"
+        "    Frag_UV = UV;\n"
+        "    Frag_Color = Color;\n"
+        "    gl_Position = ProjMtx * vec4(Position.xy,0,1);\n"
+        "}\n"
+    ;
+    glShaderSource(g_VertexShader, 1, &vertexShaderCode, nullptr);
+    glCompileShader(g_VertexShader);
+    CheckShader(g_VertexShader, "GH-4174 vertex shader");
+
+    g_FragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+    const GLchar* fragmentShaderCode =
+        "#version 330 core\n"
+        "precision mediump float;\n"
+        "\n"
+        "in vec2 Frag_UV;\n"
+        "in vec4 Frag_Color;\n"
+        "layout (location = 0) out vec4 Out_Color;\n"
+        "\n"
+        "void main()\n"
+        "{\n"
+        "    Out_Color = Frag_Color * vec4(1, 1, 0, 1);\n" // For sanity, mask out the blue channel so we know the shader is being used.
+        "}\n"
+        ;
+    glShaderSource(g_FragmentShader, 1, &fragmentShaderCode, nullptr);
+    glCompileShader(g_FragmentShader);
+    CheckShader(g_FragmentShader, "GH-4174 fragment shader");
+
+    g_ShaderProgram = glCreateProgram();
+    glAttachShader(g_ShaderProgram, g_VertexShader);
+    glAttachShader(g_ShaderProgram, g_FragmentShader);
+    glLinkProgram(g_ShaderProgram);
+    CheckProgram(g_ShaderProgram, "GH-4174 shader program");
+}
+
+static void GH4174()
+{
+    ImGui::Begin("FX", NULL, ImGuiWindowFlags_AlwaysAutoResize);
+    ImVec2 size(1000.0f, 600.0f);
+    ImGui::InvisibleButton("canvas", size);
+    ImVec2 p0 = ImGui::GetItemRectMin();
+    ImVec2 p1 = ImGui::GetItemRectMax();
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+
+    draw_list->PushClipRect(p0, p1);
+    draw_list->AddCallback([](const ImDrawList*, const ImDrawCmd*)
+        {
+            ImDrawData* draw_data = ImGui::GetDrawData();
+            float L = draw_data->DisplayPos.x;
+            float R = draw_data->DisplayPos.x + draw_data->DisplaySize.x;
+            float T = draw_data->DisplayPos.y;
+            float B = draw_data->DisplayPos.y + draw_data->DisplaySize.y;
+
+            const float ortho_projection[4][4] =
+            {
+               { 2.0f / (R - L),   0.0f,         0.0f,   0.0f },
+               { 0.0f,         2.0f / (T - B),   0.0f,   0.0f },
+               { 0.0f,         0.0f,        -1.0f,   0.0f },
+               { (R + L) / (L - R),  (T + B) / (B - T),  0.0f,   1.0f },
+            };
+
+            glUseProgram(g_ShaderProgram); // If I remove this line, it works
+            glUniformMatrix4fv(glGetUniformLocation(g_ShaderProgram, "ProjMtx"), 1, GL_FALSE, &ortho_projection[0][0]);
+        }, nullptr);
+    draw_list->AddRectFilled(p0, p1, 0xFFFF00FF);
+    draw_list->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+    draw_list->PopClipRect();
+
+    ImGui::End();
+}
+
+static void GH4174_Cleanup()
+{
+    if (g_ShaderProgram && g_VertexShader) { glDetachShader(g_ShaderProgram, g_VertexShader); }
+    if (g_ShaderProgram && g_FragmentShader) { glDetachShader(g_ShaderProgram, g_FragmentShader); }
+    if (g_VertexShader) { glDeleteShader(g_VertexShader); g_VertexShader = 0; }
+    if (g_FragmentShader) { glDeleteShader(g_FragmentShader); g_FragmentShader = 0; }
+    if (g_ShaderProgram) { glDeleteProgram(g_ShaderProgram); g_ShaderProgram = 0; }
+}
+
 int main(int, char**)
 {
     // Setup window
@@ -147,6 +249,8 @@ int main(int, char**)
     bool show_another_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
+    GH4174_Init();
+
     // Main loop
     while (!glfwWindowShouldClose(window))
     {
@@ -199,6 +303,8 @@ int main(int, char**)
             ImGui::End();
         }
 
+        GH4174();
+
         // Rendering
         ImGui::Render();
         int display_w, display_h;
@@ -212,6 +318,7 @@ int main(int, char**)
     }
 
     // Cleanup
+    GH4174_Cleanup();
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
@@ -220,4 +327,38 @@ int main(int, char**)
     glfwTerminate();
 
     return 0;
+}
+
+static bool CheckShader(GLuint handle, const char* desc)
+{
+    GLint status = 0, log_length = 0;
+    glGetShaderiv(handle, GL_COMPILE_STATUS, &status);
+    glGetShaderiv(handle, GL_INFO_LOG_LENGTH, &log_length);
+    if ((GLboolean)status == GL_FALSE)
+        fprintf(stderr, "ERROR: failed to compile %s!\n", desc);
+    if (log_length > 1)
+    {
+        ImVector<char> buf;
+        buf.resize((int)(log_length + 1));
+        glGetShaderInfoLog(handle, log_length, NULL, (GLchar*)buf.begin());
+        fprintf(stderr, "%s\n", buf.begin());
+    }
+    return (GLboolean)status == GL_TRUE;
+}
+
+static bool CheckProgram(GLuint handle, const char* desc)
+{
+    GLint status = 0, log_length = 0;
+    glGetProgramiv(handle, GL_LINK_STATUS, &status);
+    glGetProgramiv(handle, GL_INFO_LOG_LENGTH, &log_length);
+    if ((GLboolean)status == GL_FALSE)
+        fprintf(stderr, "ERROR: failed to link %s!\n", desc);
+    if (log_length > 1)
+    {
+        ImVector<char> buf;
+        buf.resize((int)(log_length + 1));
+        glGetProgramInfoLog(handle, log_length, NULL, (GLchar*)buf.begin());
+        fprintf(stderr, "%s\n", buf.begin());
+    }
+    return (GLboolean)status == GL_TRUE;
 }
