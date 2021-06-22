@@ -51,6 +51,69 @@ static void glfw_error_callback(int error, const char* description)
     fprintf(stderr, "Glfw Error %d: %s\n", error, description);
 }
 
+static void ShowViewportInfo(const char* label, ImGuiID viewportId)
+{
+    if (viewportId == 0)
+    {
+        ImGui::Text("%s: None", label);
+    }
+    else if (viewportId == ImGui::GetMainViewport()->ID)
+    {
+        ImGui::Text("%s: Main Viewport", label);
+    }
+    else
+    {
+        ImGui::Text("%s: %s Viewport (%p)", label, ImGui::FindViewportByID(viewportId) != nullptr ? "Secondary" : "Invalid", viewportId);
+    }
+}
+
+static void ShowViewportInfo()
+{
+    ImGuiViewport* viewport = ImGui::GetWindowViewport();
+    ShowViewportInfo("Current viewport", viewport->ID);
+    ShowViewportInfo("Parent viewport", viewport->ParentViewportId);
+}
+
+// Note that this demonstration relies on ConfigViewportsNoAutoMerge being disabled (which is the default.)
+static void GH4254()
+{
+    ImGuiViewport* mainViewport = ImGui::GetMainViewport();
+
+    static bool putWindowOutsideViewport = true;
+
+    // Show metrics window so viewport information can be inspected.
+    ImGui::ShowMetricsWindow();
+
+    ImVec2 windowPosition(mainViewport->Pos.x + 10, mainViewport->Pos.y + 10);
+
+    if (putWindowOutsideViewport)
+    {
+        windowPosition.x += mainViewport->Size.x - 20;
+    }
+
+    ImGui::SetNextWindowPos(windowPosition);
+    ImGui::SetNextWindowSize(ImVec2(600, 150), ImGuiCond_Always);
+    ImGui::Begin("Test window", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+    {
+        ImGui::Checkbox("Put window outside main viewport", &putWindowOutsideViewport);
+        ShowViewportInfo();
+
+        if (ImGui::Button("Show popup"))
+        {
+            ImGui::OpenPopup("TestPopup");
+        }
+
+        ImGui::SetNextWindowSize(ImVec2(610, 160), ImGuiCond_Always); // Oversize the popup to ensure it gets its own viewport
+        if (ImGui::BeginPopup("TestPopup"))
+        {
+            ImGui::Checkbox("Put window outside main viewport", &putWindowOutsideViewport);
+            ShowViewportInfo();
+            ImGui::EndPopup();
+        }
+    }
+    ImGui::End();
+}
+
 int main(int, char**)
 {
     // Setup window
@@ -118,7 +181,7 @@ int main(int, char**)
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;       // Enable Keyboard Controls
     //io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;           // Enable Docking
+    //io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;           // Enable Docking
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;         // Enable Multi-Viewport / Platform Windows
     //io.ConfigViewportsNoAutoMerge = true;
     //io.ConfigViewportsNoTaskBarIcon = true;
@@ -174,6 +237,7 @@ int main(int, char**)
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
+#if 0
         // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
         if (show_demo_window)
             ImGui::ShowDemoWindow(&show_demo_window);
@@ -210,6 +274,8 @@ int main(int, char**)
                 show_another_window = false;
             ImGui::End();
         }
+#endif
+        GH4254();
 
         // Rendering
         ImGui::Render();
